@@ -16,7 +16,7 @@
  * Barma-lej, Kress, or their respective owners.
  */
 
-const KRESS_FLEET_CARD_VERSION = '0.3.2';
+const KRESS_FLEET_CARD_VERSION = '0.3.3';
 const VIEW_KEY_PREFIX = 'kress-fleet-card-view:';
 const LANDROID_TAG = 'landroid-card';
 const KRESS_TAG = 'kress-fleet-card';
@@ -327,6 +327,103 @@ const applyZoneNameToStatus = (card, zoneNameEntityId) => {
   }
 };
 
+const resolveErrorSensor = (card) => {
+  const cfg = card.config || {};
+  const explicit = cfg.error_sensor || cfg.error_entity;
+  if (explicit && card.hass?.states?.[explicit]) return explicit;
+
+  const candidates = entityIdsForDevice(card);
+
+  return (
+    candidates.find((entityId) => {
+      const translationKey = card.hass?.entities?.[entityId]?.translation_key;
+      return translationKey === 'error' || translationKey === 'error_code';
+    }) ||
+    candidates.find(
+      (entityId) =>
+        entityId.endsWith('_error') || entityId.endsWith('_error_code'),
+    ) ||
+    candidates.find((entityId) => {
+      const state = card.hass?.states?.[entityId];
+      const registry = card.hass?.entities?.[entityId];
+
+      const text = [
+        entityId,
+        state?.attributes?.friendly_name,
+        registry?.name,
+        registry?.original_name,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return (
+        /\berror\b/.test(text) ||
+        text.includes('error_code') ||
+        text.includes('fehlercode')
+      );
+    }) ||
+    null
+  );
+};
+
+const isZeroErrorState = (card, entityId) => {
+  if (!entityId) return false;
+
+  const raw = String(card.hass?.states?.[entityId]?.state ?? '').trim();
+
+  // Kress Fleet uses numeric error code 0 for "no active error".
+  return /^0+(?:\.0+)?$/.test(raw);
+};
+
+const applyZeroErrorCompatibility = (card, errorEntityId) => {
+  const root = card.shadowRoot;
+  if (!root) return;
+
+  const status = root.querySelector('.status');
+  const statusText = root.querySelector('.status-text');
+
+  if (!status || !statusText) return;
+
+  const noError = isZeroErrorState(card, errorEntityId);
+
+  // Do not overwrite Landroid Card's own error styling. Instead add/remove
+  // one compatibility class, so a later real error immediately uses the
+  // upstream red error styling again.
+  let style = root.querySelector('#kress-fleet-status-compat-style');
+
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'kress-fleet-status-compat-style';
+    style.textContent = `
+      .status.kress-fleet-no-error .status-text {
+        color: var(--lc-secondary-text-color, var(--secondary-text-color)) !important;
+      }
+    `;
+    root.appendChild(style);
+  }
+
+  status.classList.toggle('kress-fleet-no-error', noError);
+
+  if (!noError) return;
+
+  const current = String(statusText.textContent ?? '').trim();
+
+  // Landroid Card appends the formatted error state to the status.
+  // For Kress, error code 0 means "no error", so suppress only this
+  // trailing zero. Other values / real error descriptions stay untouched.
+  const cleaned = current.replace(/\s*-\s*0+(?:\.0+)?\s*$/, '').trim();
+
+  if (cleaned !== current) {
+    statusText.textContent = cleaned;
+
+    const title = String(status.title ?? '').trim();
+    if (title) {
+      status.title = title.replace(/\s*-\s*0+(?:\.0+)?\s*$/, '').trim();
+    }
+  }
+};
+
 const getSavedView = (card) => {
   const cfg = card.config || {};
   if (card._kressFleetView) return card._kressFleetView;
@@ -574,7 +671,10 @@ const enhanceCard = (card, force = false) => {
   if (!card?.hass || !card.shadowRoot || card.config?.compact_view) return;
 
   const zoneNameId = resolveZoneNameSensor(card);
+  const errorId = resolveErrorSensor(card);
+
   applyZoneNameToStatus(card, zoneNameId);
+  applyZeroErrorCompatibility(card, errorId);
 
   const media = findOriginalMedia(card);
   if (!media) return;
@@ -598,6 +698,7 @@ const enhanceCard = (card, force = false) => {
     card.hass.states[cameraId]?.last_updated,
     coverageId ? card.hass.states[coverageId]?.state : '',
     zoneNameId ? card.hass.states[zoneNameId]?.state : '',
+    errorId ? card.hass.states[errorId]?.state : '',
     card._kressFleetForceMapReload || '',
   ].join('|');
 

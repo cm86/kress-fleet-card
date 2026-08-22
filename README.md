@@ -9,6 +9,7 @@ Kress Fleet Card wraps the existing [Landroid Card](https://github.com/Barma-lej
 - automatic English/German labels
 - automatic discovery of the Live Map camera and coverage-period selector
 - human-readable active zone names from the Kress Fleet zone-name sensor
+- suppresses Kress error code `0` as "no error" instead of showing a red `- 0`
 - configurable width for Home Assistant Sections dashboards
 - visual editor for the main Kress-specific options
 
@@ -91,6 +92,9 @@ coverage_select: select.your_mower_coverage_period
 # Optional zone-name sensor. Normally auto-detected.
 zone_name_sensor: sensor.your_mower_zone_name
 
+# Optional error sensor. Normally auto-detected.
+error_sensor: sensor.your_mower_error
+
 # mower | map
 default_view: mower
 
@@ -147,6 +151,12 @@ Install **Landroid Card** through HACS and ensure its frontend resource is loade
 ### Old JavaScript version is still shown
 
 Hard-refresh the browser or clear the Home Assistant frontend cache.
+
+### Status shows a red `- 0`
+
+Kress Fleet uses error code `0` for **no active error**. Kress Fleet Card
+suppresses that zero and restores the normal status color. Real non-zero
+errors remain visible and keep the Landroid Card error styling.
 
 ## License
 
