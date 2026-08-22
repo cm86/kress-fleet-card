@@ -79,6 +79,12 @@ It also automatically detects the mower's Kress Fleet `zone_name` sensor and use
 
 The card can also be added and configured through the Home Assistant visual card editor.
 
+## Live Map example
+
+The Live Map view combines the Kress Fleet map with the mower controls and the selectable coverage period.
+
+![Kress Fleet Card Live Map](images/live-map-example.png)
+
 ## Optional configuration
 
 ```yaml
