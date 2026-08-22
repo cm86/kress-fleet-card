@@ -8,6 +8,7 @@ Kress Fleet Card wraps the existing [Landroid Card](https://github.com/Barma-lej
 - select the Live Map coverage period
 - automatic English/German labels
 - automatic discovery of the Live Map camera and coverage-period selector
+- human-readable active zone names from the Kress Fleet zone-name sensor
 - configurable width for Home Assistant Sections dashboards
 - visual editor for the main Kress-specific options
 
@@ -73,6 +74,8 @@ entity: lawn_mower.your_mower
 
 The card automatically tries to find the Kress Fleet Live Map camera and the coverage-period selector belonging to the same Home Assistant device.
 
+It also automatically detects the mower's Kress Fleet `zone_name` sensor and uses its human-readable value in the mower status line instead of numeric labels such as `Zone 2`.
+
 The card can also be added and configured through the Home Assistant visual card editor.
 
 ## Optional configuration
@@ -84,6 +87,9 @@ entity: lawn_mower.your_mower
 # Optional explicit entities. Normally auto-detected.
 map_camera: camera.your_mower_live_map
 coverage_select: select.your_mower_coverage_period
+
+# Optional zone-name sensor. Normally auto-detected.
+zone_name_sensor: sensor.your_mower_zone_name
 
 # mower | map
 default_view: mower

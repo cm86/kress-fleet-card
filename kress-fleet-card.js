@@ -226,6 +226,107 @@ const resolveCoverageSelect = (card) => {
   );
 };
 
+const resolveZoneNameSensor = (card) => {
+  const cfg = card.config || {};
+  const explicit = cfg.zone_name_sensor || cfg.zone_name_entity;
+  if (explicit && card.hass?.states?.[explicit]) return explicit;
+
+  const candidates = entityIdsForDevice(card, 'sensor');
+
+  return (
+    candidates.find(
+      (entityId) => card.hass?.entities?.[entityId]?.translation_key === 'zone_name',
+    ) ||
+    candidates.find((entityId) => entityId.endsWith('_zone_name')) ||
+    candidates.find((entityId) => {
+      const state = card.hass?.states?.[entityId];
+      const registry = card.hass?.entities?.[entityId];
+      const text = [
+        entityId,
+        state?.attributes?.friendly_name,
+        registry?.name,
+        registry?.original_name,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return (
+        text.includes('zone name') ||
+        text.includes('zone_name') ||
+        text.includes('zonenname')
+      );
+    }) ||
+    null
+  );
+};
+
+const escapeRegExp = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const applyZoneNameToStatus = (card, zoneNameEntityId) => {
+  if (!zoneNameEntityId) return;
+
+  const zoneNameState = card.hass?.states?.[zoneNameEntityId];
+  const zoneName = String(zoneNameState?.state ?? '').trim();
+
+  if (
+    !zoneName ||
+    ['unknown', 'unavailable', 'none', 'null'].includes(zoneName.toLowerCase())
+  ) {
+    return;
+  }
+
+  const statusText = card.shadowRoot?.querySelector('.status-text');
+  if (!statusText) return;
+
+  const current = String(statusText.textContent ?? '').trim();
+  if (!current || !/\bZone\b/i.test(current)) return;
+
+  // First try the mower's current-zone entity so only the actual zone part
+  // of the Landroid status line is replaced.
+  const currentZoneEntity =
+    entityIdsForDevice(card, 'select').find((entityId) => {
+      const registry = card.hass?.entities?.[entityId];
+      return (
+        registry?.translation_key === 'current_zone' ||
+        entityId.endsWith('_current_zone')
+      );
+    }) || null;
+
+  const rawZone = String(
+    currentZoneEntity ? card.hass?.states?.[currentZoneEntity]?.state ?? '' : '',
+  ).trim();
+
+  let updated = current;
+
+  if (rawZone) {
+    const rawPattern = new RegExp(
+      `\\bZone\\s+${escapeRegExp(rawZone)}(?:\\s*-\\s*0)?`,
+      'i',
+    );
+    updated = current.replace(rawPattern, zoneName);
+  }
+
+  // Compatibility fallback for Landroid Card variants that expose a numeric
+  // zone in a slightly different way (for example "Zone 2 - 0").
+  if (updated === current) {
+    updated = current.replace(
+      /\bZone\s+\d+(?:\s*-\s*0)?\b/i,
+      zoneName,
+    );
+  }
+
+  if (updated !== current) {
+    statusText.textContent = updated;
+
+    const status = statusText.closest('.status');
+    if (status?.title === current || status?.title?.includes('Zone')) {
+      status.title = updated;
+    }
+  }
+};
+
 const getSavedView = (card) => {
   const cfg = card.config || {};
   if (card._kressFleetView) return card._kressFleetView;
@@ -472,6 +573,9 @@ const setMetadataVisibility = (card, visible) => {
 const enhanceCard = (card, force = false) => {
   if (!card?.hass || !card.shadowRoot || card.config?.compact_view) return;
 
+  const zoneNameId = resolveZoneNameSensor(card);
+  applyZoneNameToStatus(card, zoneNameId);
+
   const media = findOriginalMedia(card);
   if (!media) return;
 
@@ -493,6 +597,7 @@ const enhanceCard = (card, force = false) => {
     coverageId,
     card.hass.states[cameraId]?.last_updated,
     coverageId ? card.hass.states[coverageId]?.state : '',
+    zoneNameId ? card.hass.states[zoneNameId]?.state : '',
     card._kressFleetForceMapReload || '',
   ].join('|');
 
