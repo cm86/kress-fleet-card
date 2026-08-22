@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4
+
+- rename the German Coverage label to `Mähfortschritt`
+- keep language selection based on the Home Assistant frontend language
+
+
 ## 0.3.3
 
 - suppress Kress error code `0` from the mower status line

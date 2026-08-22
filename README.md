@@ -112,6 +112,8 @@ Most normal Landroid Card options can still be passed through the Kress Fleet Ca
 
 ## Coverage period
 
+On German Home Assistant installations, the Coverage control is labeled **Mähfortschritt**.
+
 The integration keeps stable internal values such as:
 
 ```text

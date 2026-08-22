@@ -16,7 +16,7 @@
  * Barma-lej, Kress, or their respective owners.
  */
 
-const KRESS_FLEET_CARD_VERSION = '0.3.3';
+const KRESS_FLEET_CARD_VERSION = '0.3.4';
 const VIEW_KEY_PREFIX = 'kress-fleet-card-view:';
 const LANDROID_TAG = 'landroid-card';
 const KRESS_TAG = 'kress-fleet-card';
@@ -56,7 +56,7 @@ const TEXT = {
   de: {
     mower: 'Mäher',
     live_map: 'Live Map',
-    coverage: 'Coverage',
+    coverage: 'Mähfortschritt',
     coverage_period: 'Coverage-Zeitraum',
     live_map_unavailable: 'Live Map ist noch nicht verfügbar',
     loading: 'Kress Fleet Card lädt …',

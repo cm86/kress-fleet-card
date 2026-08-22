@@ -4,7 +4,7 @@ Diese ZIP-Datei ist bereits die fertige Repository-Struktur.
 
 ## 1. ZIP entpacken
 
-Entpacke `kress-fleet-card-v0.3.3-hacs.zip`.
+Entpacke `kress-fleet-card-v0.3.4-hacs.zip`.
 
 Danach solltest du einen Ordner namens:
 
@@ -92,7 +92,7 @@ git status
 ## 7. Ersten Commit erstellen
 
 ```bash
-git commit -m "Initial release of Kress Fleet Card v0.3.3"
+git commit -m "Initial release of Kress Fleet Card v0.3.4"
 ```
 
 ## 8. GitHub-Repository verbinden
