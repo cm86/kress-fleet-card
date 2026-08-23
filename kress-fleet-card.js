@@ -16,7 +16,7 @@
  * Barma-lej, Kress, or their respective owners.
  */
 
-const KRESS_FLEET_CARD_VERSION = '0.3.5';
+const KRESS_FLEET_CARD_VERSION = '0.3.6';
 const VIEW_KEY_PREFIX = 'kress-fleet-card-view:';
 const LANDROID_TAG = 'landroid-card';
 const KRESS_TAG = 'kress-fleet-card';
@@ -38,6 +38,11 @@ const TEXT = {
     mower_entity: 'Mower entity',
     live_map_camera: 'Live map camera',
     coverage_entity: 'Coverage period',
+    target_zone: 'Mowing zone',
+    target_zone_entity: 'Mowing zone',
+    mow_zone: 'Mow zone',
+    mow_zone_button: 'Mow selected zone button',
+    select_zone: 'Select a zone',
     default_view: 'Default view',
     sections_width: 'Width in Sections layout',
     width_auto: 'Automatic / Landroid Card',
@@ -67,6 +72,11 @@ const TEXT = {
     mower_entity: 'Mäher-Entity',
     live_map_camera: 'Live-Map-Kamera',
     coverage_entity: 'Coverage-Zeitraum',
+    target_zone: 'Mähzone',
+    target_zone_entity: 'Mähzone',
+    mow_zone: 'Zone mähen',
+    mow_zone_button: 'Button „Ausgewählte Zone mähen“',
+    select_zone: 'Zone auswählen',
     default_view: 'Standardansicht',
     sections_width: 'Breite im Sections-Layout',
     width_auto: 'Automatisch / Landroid Card',
@@ -223,6 +233,38 @@ const resolveCoverageSelect = (card) => {
     entityIdsForDevice(card, 'select').find((entityId) =>
       looksLikeCoverageSelect(card, entityId),
     ) || null
+  );
+};
+
+const resolveTargetZoneSelect = (card) => {
+  const cfg = card.config || {};
+  const explicit = cfg.target_zone_select || cfg.target_zone_entity;
+  if (explicit && card.hass?.states?.[explicit]) return explicit;
+
+  const candidates = entityIdsForDevice(card, 'select');
+  return (
+    candidates.find(
+      (entityId) =>
+        card.hass?.entities?.[entityId]?.translation_key === 'target_zone',
+    ) ||
+    candidates.find((entityId) => entityId.endsWith('_target_zone')) ||
+    null
+  );
+};
+
+const resolveMowSelectedZoneButton = (card) => {
+  const cfg = card.config || {};
+  const explicit = cfg.mow_zone_button || cfg.mow_selected_zone_button;
+  if (explicit && card.hass?.states?.[explicit]) return explicit;
+
+  const candidates = entityIdsForDevice(card, 'button');
+  return (
+    candidates.find(
+      (entityId) =>
+        card.hass?.entities?.[entityId]?.translation_key === 'mow_selected_zone',
+    ) ||
+    candidates.find((entityId) => entityId.endsWith('_mow_selected_zone')) ||
+    null
   );
 };
 
@@ -661,6 +703,135 @@ const makeCoverageSelect = (card, entityId) => {
   return wrapper;
 };
 
+const makeTargetZoneControls = (card, selectEntityId, buttonEntityId) => {
+  const selectState = card.hass?.states?.[selectEntityId];
+  const buttonState = card.hass?.states?.[buttonEntityId];
+  if (!selectState || !buttonState) return null;
+
+  const options = Array.isArray(selectState.attributes?.options)
+    ? selectState.attributes.options
+    : [];
+
+  const wrapper = setStyles(document.createElement('div'), {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    flex: '1 1 420px',
+    minWidth: '280px',
+    marginLeft: 'auto',
+  });
+
+  const label = setStyles(document.createElement('span'), {
+    color: 'var(--secondary-text-color)',
+    fontSize: '14px',
+    whiteSpace: 'nowrap',
+  });
+  label.textContent = card.config?.target_zone_label || tr(card.hass, 'target_zone', 'Mowing zone');
+
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', tr(card.hass, 'target_zone', 'Mowing zone'));
+  setStyles(select, {
+    height: '40px',
+    flex: '1 1 180px',
+    minWidth: '150px',
+    maxWidth: '260px',
+    padding: '0 34px 0 12px',
+    border: '1px solid var(--divider-color)',
+    borderRadius: '10px',
+    color: 'var(--primary-text-color)',
+    background: 'var(--card-background-color)',
+    font: 'inherit',
+    fontSize: '15px',
+    cursor: options.length ? 'pointer' : 'not-allowed',
+  });
+
+  const current = String(selectState.state ?? '');
+  if (!current || ['unknown', 'unavailable'].includes(current)) {
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = tr(card.hass, 'select_zone', 'Select a zone');
+    placeholder.selected = true;
+    placeholder.disabled = true;
+    select.appendChild(placeholder);
+  }
+
+  for (const option of options) {
+    const optionEl = document.createElement('option');
+    optionEl.value = option;
+    optionEl.textContent = option;
+    optionEl.selected = option === selectState.state;
+    select.appendChild(optionEl);
+  }
+  select.disabled = !options.length || selectState.state === 'unavailable';
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.title = tr(card.hass, 'mow_zone', 'Mow zone');
+  button.setAttribute('aria-label', tr(card.hass, 'mow_zone', 'Mow zone'));
+  setStyles(button, {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '7px',
+    minHeight: '40px',
+    padding: '0 14px',
+    border: '0',
+    borderRadius: '20px',
+    font: 'inherit',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: 'var(--text-primary-color, #fff)',
+    background: 'var(--primary-color)',
+    cursor: 'pointer',
+  });
+  button.append(makeIcon('mdi:play'), document.createTextNode(tr(card.hass, 'mow_zone', 'Mow zone')));
+
+  const updateButtonState = () => {
+    const selected = String(select.value || '');
+    const unavailable = String(buttonState.state || '').toLowerCase() === 'unavailable';
+    button.disabled = !selected || unavailable;
+    button.style.opacity = button.disabled ? '0.45' : '1';
+    button.style.cursor = button.disabled ? 'not-allowed' : 'pointer';
+  };
+  updateButtonState();
+
+  select.addEventListener('change', async (event) => {
+    const selected = event.target.value;
+    if (!selected) return;
+    select.disabled = true;
+    button.disabled = true;
+    try {
+      await card.hass.callService('select', 'select_option', {
+        entity_id: selectEntityId,
+        option: selected,
+      });
+    } catch (err) {
+      console.error('[kress-fleet-card] Target zone selection failed', err);
+    } finally {
+      select.disabled = !options.length;
+      updateButtonState();
+      enhanceCard(card, true);
+    }
+  });
+
+  button.addEventListener('click', async () => {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      await card.hass.callService('button', 'press', {
+        entity_id: buttonEntityId,
+      });
+    } catch (err) {
+      console.error('[kress-fleet-card] Targeted zone start failed', err);
+    } finally {
+      updateButtonState();
+    }
+  });
+
+  wrapper.append(label, select, button);
+  return wrapper;
+};
+
 const cameraPictureUrl = (card, cameraId) => {
   const state = card.hass?.states?.[cameraId];
   const picture = state?.attributes?.entity_picture;
@@ -763,6 +934,8 @@ const enhanceCard = (card, force = false) => {
   const zoneNameId = resolveZoneNameSensor(card);
   const errorId = resolveErrorSensor(card);
   const errorDescriptionId = resolveErrorDescriptionSensor(card);
+  const targetZoneSelectId = resolveTargetZoneSelect(card);
+  const mowSelectedZoneButtonId = resolveMowSelectedZoneButton(card);
 
   applyLocalizedStatus(card, statusId);
   applyZoneNameToStatus(card, zoneNameId);
@@ -793,6 +966,11 @@ const enhanceCard = (card, force = false) => {
     zoneNameId ? card.hass.states[zoneNameId]?.state : '',
     errorId ? card.hass.states[errorId]?.state : '',
     errorDescriptionId ? card.hass.states[errorDescriptionId]?.state : '',
+    targetZoneSelectId ? card.hass.states[targetZoneSelectId]?.state : '',
+    targetZoneSelectId
+      ? JSON.stringify(card.hass.states[targetZoneSelectId]?.attributes?.options || [])
+      : '',
+    mowSelectedZoneButtonId ? card.hass.states[mowSelectedZoneButtonId]?.state : '',
     card._kressFleetForceMapReload || '',
   ].join('|');
 
@@ -855,6 +1033,15 @@ const enhanceCard = (card, force = false) => {
   if (view === 'map' && coverageId) {
     const coverage = makeCoverageSelect(card, coverageId);
     if (coverage) controls.appendChild(coverage);
+  }
+
+  if (view === 'mower' && targetZoneSelectId && mowSelectedZoneButtonId) {
+    const zoneControls = makeTargetZoneControls(
+      card,
+      targetZoneSelectId,
+      mowSelectedZoneButtonId,
+    );
+    if (zoneControls) controls.appendChild(zoneControls);
   }
 
   host.appendChild(controls);
@@ -1008,6 +1195,11 @@ class KressFleetCard extends HTMLElement {
     const innerConfig = { ...this._config, type: 'custom:landroid-card' };
     delete innerConfig.grid_columns;
     delete innerConfig.layout_width;
+    delete innerConfig.target_zone_select;
+    delete innerConfig.target_zone_entity;
+    delete innerConfig.mow_zone_button;
+    delete innerConfig.mow_selected_zone_button;
+    delete innerConfig.target_zone_label;
     this._inner.setConfig(innerConfig);
     this._inner.config = innerConfig;
   }
@@ -1183,6 +1375,18 @@ class KressFleetCardEditor extends HTMLElement {
       this._makeField(
         tr(this._hass, 'coverage_entity', 'Coverage period'),
         this._makeEntitySelect('coverage_select', 'select'),
+      ),
+    );
+    root.appendChild(
+      this._makeField(
+        tr(this._hass, 'target_zone_entity', 'Mowing zone'),
+        this._makeEntitySelect('target_zone_select', 'select'),
+      ),
+    );
+    root.appendChild(
+      this._makeField(
+        tr(this._hass, 'mow_zone_button', 'Mow selected zone button'),
+        this._makeEntitySelect('mow_zone_button', 'button'),
       ),
     );
 

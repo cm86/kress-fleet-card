@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.6 - 2026-08-23
+
+### Added
+
+- Automatically detect the Kress Fleet v0.3.14 per-mower target-zone select and targeted-zone start button.
+- Show a localized **Mowing zone / Mähzone** dropdown plus **Mow zone / Zone mähen** button in the mower view.
+- Keep selecting a zone separate from starting the mower so a dropdown change alone never launches a mowing task.
+- Add optional visual-editor overrides for the target-zone select and targeted-zone button.
+- Add tagged GitHub Releases with version notes extracted automatically from the matching `CHANGELOG.md` section.
+
+### Compatibility
+
+- Existing Live Map, coverage, localized status/zone/error compatibility and Landroid Card controls remain unchanged.
+- Targeted-zone controls appear only when the matching integration entities exist, so older integration versions continue to work without them.
+
 ## 0.3.5
 
 - show Home Assistant-localized Kress error descriptions when integration v0.3.11+ exposes the `Error` enum sensor

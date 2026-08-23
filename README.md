@@ -6,6 +6,7 @@ Kress Fleet Card wraps the existing [Landroid Card](https://github.com/Barma-lej
 
 - switch between mower view and the Kress Fleet Live Map
 - select the Live Map coverage period
+- select a named Fleet RTK mowing zone and start mowing that exact zone
 - automatic English/German labels
 - automatic discovery of the Live Map camera and coverage-period selector
 - human-readable active zone names from the Kress Fleet zone-name sensor
@@ -17,7 +18,7 @@ Kress Fleet Card wraps the existing [Landroid Card](https://github.com/Barma-lej
 
 ## Requirements
 
-> Kress Fleet integration v0.3.11+ is recommended for localized mower error descriptions.
+> Kress Fleet integration v0.3.14+ is required for the targeted-zone dropdown/button. v0.3.11+ provides localized mower error descriptions.
 
 Before installing this card, install:
 
@@ -75,11 +76,20 @@ type: custom:kress-fleet-card
 entity: lawn_mower.your_mower
 ```
 
-The card automatically tries to find the Kress Fleet Live Map camera and the coverage-period selector belonging to the same Home Assistant device.
+The card automatically tries to find the Kress Fleet Live Map camera, coverage-period selector, target-zone selector and targeted-zone start button belonging to the same Home Assistant device.
 
 It also automatically detects the mower's Kress Fleet `zone_name` sensor and uses its human-readable value in the mower status line instead of numeric labels such as `Zone 2`.
 
 The card can also be added and configured through the Home Assistant visual card editor.
+
+
+## Targeted zone mowing
+
+With Kress Fleet integration v0.3.14+ the mower view automatically shows a **Mowing zone / Mähzone** dropdown and a **Mow zone / Zone mähen** button. The dropdown contains the user-assigned zone names from that mower's active Fleet map.
+
+Selecting a zone only arms the target; the mower is not started until the button is pressed. The normal Landroid Start/Pause/Dock controls remain unchanged.
+
+The integration resolves the displayed zone name back to the exact Fleet zone ID and sends the same single-zone command shape observed from the official Fleet web UI. No zone name or number is hard-coded in the card.
 
 ## Live Map example
 
@@ -96,6 +106,8 @@ entity: lawn_mower.your_mower
 # Optional explicit entities. Normally auto-detected.
 map_camera: camera.your_mower_live_map
 coverage_select: select.your_mower_coverage_period
+target_zone_select: select.your_mower_mowing_zone
+mow_zone_button: button.your_mower_mow_selected_zone
 
 # Optional zone-name sensor. Normally auto-detected.
 zone_name_sensor: sensor.your_mower_zone_name
@@ -142,11 +154,16 @@ Letzte 3 Tage
 Letzte 7 Tage
 ```
 
-## Updating
+## Updating and release notes
 
-For now, this repository does not require GitHub Releases.
+Tagged releases use semantic versions such as `v0.3.6`. The repository's release workflow automatically publishes the matching `CHANGELOG.md` section as GitHub release notes, so HACS can show a real version and **Release notes / Versionshinweise** instead of only a commit hash.
 
-HACS can install and update the card directly from the repository's default branch.
+For maintainers, push the normal commit first and tag it only after the repository checks are green:
+
+```bash
+git tag v0.3.6
+git push origin v0.3.6
+```
 
 ## Troubleshooting
 
