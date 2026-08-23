@@ -16,7 +16,7 @@
  * Barma-lej, Kress, or their respective owners.
  */
 
-const KRESS_FLEET_CARD_VERSION = '0.3.4';
+const KRESS_FLEET_CARD_VERSION = '0.3.5';
 const VIEW_KEY_PREFIX = 'kress-fleet-card-view:';
 const LANDROID_TAG = 'landroid-card';
 const KRESS_TAG = 'kress-fleet-card';
@@ -226,6 +226,41 @@ const resolveCoverageSelect = (card) => {
   );
 };
 
+const resolveStatusSensor = (card) => {
+  const candidates = entityIdsForDevice(card, 'sensor');
+  return (
+    candidates.find(
+      (entityId) => card.hass?.entities?.[entityId]?.translation_key === 'status',
+    ) ||
+    candidates.find((entityId) => entityId.endsWith('_status')) ||
+    null
+  );
+};
+
+const applyLocalizedStatus = (card, statusEntityId) => {
+  if (!statusEntityId) return;
+  const state = String(card.hass?.states?.[statusEntityId]?.state ?? '').trim();
+  if (!state || ['unknown', 'unavailable'].includes(state)) return;
+
+  const key = `component.kress_fleet.entity.sensor.status.state.${state}`;
+  const localized = card.hass?.localize?.(key);
+  if (!localized || localized === state) return;
+
+  const statusText = card.shadowRoot?.querySelector('.status-text');
+  if (!statusText) return;
+  const current = String(statusText.textContent ?? '').trim();
+  if (!current) return;
+
+  const pattern = new RegExp(`^${escapeRegExp(state)}(?=\\s|$)`, 'i');
+  const updated = current.replace(pattern, localized);
+  if (updated !== current) {
+    statusText.textContent = updated;
+    const status = statusText.closest('.status');
+    const title = String(status?.title ?? '').trim();
+    if (status && title) status.title = title.replace(pattern, localized);
+  }
+};
+
 const resolveZoneNameSensor = (card) => {
   const cfg = card.config || {};
   const explicit = cfg.zone_name_sensor || cfg.zone_name_entity;
@@ -367,6 +402,41 @@ const resolveErrorSensor = (card) => {
   );
 };
 
+const resolveErrorDescriptionSensor = (card) => {
+  const cfg = card.config || {};
+  const explicit = cfg.error_description_sensor || cfg.error_description_entity;
+  if (explicit && card.hass?.states?.[explicit]) return explicit;
+
+  const candidates = entityIdsForDevice(card, 'sensor');
+  return (
+    candidates.find(
+      (entityId) =>
+        card.hass?.entities?.[entityId]?.translation_key === 'error_description',
+    ) ||
+    candidates.find((entityId) => entityId.endsWith('_error_description')) ||
+    null
+  );
+};
+
+const localizedErrorDescription = (card, entityId, errorCode) => {
+  if (!entityId) return null;
+  const state = String(card.hass?.states?.[entityId]?.state ?? '').trim();
+  if (!state || ['unknown', 'unavailable', 'none', 'null'].includes(state)) {
+    return null;
+  }
+  if (state === 'no_error') return null;
+
+  const key = `component.kress_fleet.entity.sensor.error_description.state.${state}`;
+  const localized = card.hass?.localize?.(key);
+  const fallback = state.replaceAll('_', ' ');
+  const description = localized || fallback;
+
+  if (state === 'unknown_error' && errorCode) {
+    return `${description} (${errorCode})`;
+  }
+  return description;
+};
+
 const isZeroErrorState = (card, entityId) => {
   if (!entityId) return false;
 
@@ -376,7 +446,7 @@ const isZeroErrorState = (card, entityId) => {
   return /^0+(?:\.0+)?$/.test(raw);
 };
 
-const applyZeroErrorCompatibility = (card, errorEntityId) => {
+const applyErrorCompatibility = (card, errorEntityId, errorDescriptionEntityId) => {
   const root = card.shadowRoot;
   if (!root) return;
 
@@ -405,22 +475,41 @@ const applyZeroErrorCompatibility = (card, errorEntityId) => {
 
   status.classList.toggle('kress-fleet-no-error', noError);
 
-  if (!noError) return;
-
   const current = String(statusText.textContent ?? '').trim();
 
-  // Landroid Card appends the formatted error state to the status.
-  // For Kress, error code 0 means "no error", so suppress only this
-  // trailing zero. Other values / real error descriptions stay untouched.
-  const cleaned = current.replace(/\s*-\s*0+(?:\.0+)?\s*$/, '').trim();
-
-  if (cleaned !== current) {
-    statusText.textContent = cleaned;
-
-    const title = String(status.title ?? '').trim();
-    if (title) {
-      status.title = title.replace(/\s*-\s*0+(?:\.0+)?\s*$/, '').trim();
+  if (noError) {
+    // Landroid Card appends the formatted error state to the status. For
+    // Kress, code 0 means "no error", so remove only that trailing zero.
+    const cleaned = current.replace(/\s*-\s*0+(?:\.0+)?\s*$/, '').trim();
+    if (cleaned !== current) {
+      statusText.textContent = cleaned;
+      const title = String(status.title ?? '').trim();
+      if (title) {
+        status.title = title.replace(/\s*-\s*0+(?:\.0+)?\s*$/, '').trim();
+      }
     }
+    return;
+  }
+
+  // Keep Landroid Card's upstream red error styling, but replace a trailing
+  // numeric Kress error code with the localized description supplied by the
+  // integration. Older integration versions simply keep the numeric code.
+  const errorCode = String(card.hass?.states?.[errorEntityId]?.state ?? '').trim();
+  if (!errorCode || !/^\d+$/.test(errorCode)) return;
+
+  const description = localizedErrorDescription(
+    card,
+    errorDescriptionEntityId,
+    errorCode,
+  );
+  if (!description) return;
+
+  const pattern = new RegExp(`\\s*-\\s*${escapeRegExp(errorCode)}\\s*$`);
+  const updated = current.replace(pattern, ` - ${description}`).trim();
+  if (updated !== current) {
+    statusText.textContent = updated;
+    const title = String(status.title ?? '').trim();
+    if (title) status.title = title.replace(pattern, ` - ${description}`).trim();
   }
 };
 
@@ -670,11 +759,14 @@ const setMetadataVisibility = (card, visible) => {
 const enhanceCard = (card, force = false) => {
   if (!card?.hass || !card.shadowRoot || card.config?.compact_view) return;
 
+  const statusId = resolveStatusSensor(card);
   const zoneNameId = resolveZoneNameSensor(card);
   const errorId = resolveErrorSensor(card);
+  const errorDescriptionId = resolveErrorDescriptionSensor(card);
 
+  applyLocalizedStatus(card, statusId);
   applyZoneNameToStatus(card, zoneNameId);
-  applyZeroErrorCompatibility(card, errorId);
+  applyErrorCompatibility(card, errorId, errorDescriptionId);
 
   const media = findOriginalMedia(card);
   if (!media) return;
@@ -695,10 +787,12 @@ const enhanceCard = (card, force = false) => {
     view,
     cameraId,
     coverageId,
+    statusId ? card.hass.states[statusId]?.state : '',
     card.hass.states[cameraId]?.last_updated,
     coverageId ? card.hass.states[coverageId]?.state : '',
     zoneNameId ? card.hass.states[zoneNameId]?.state : '',
     errorId ? card.hass.states[errorId]?.state : '',
+    errorDescriptionId ? card.hass.states[errorDescriptionId]?.state : '',
     card._kressFleetForceMapReload || '',
   ].join('|');
 

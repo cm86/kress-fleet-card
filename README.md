@@ -17,6 +17,8 @@ Kress Fleet Card wraps the existing [Landroid Card](https://github.com/Barma-lej
 
 ## Requirements
 
+> Kress Fleet integration v0.3.11+ is recommended for localized mower error descriptions.
+
 Before installing this card, install:
 
 1. [HACS](https://www.hacs.xyz/)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.5
+
+- show Home Assistant-localized Kress error descriptions when integration v0.3.11+ exposes the `Error` enum sensor
+- localize the leading Kress mower status through the integration status translations, so e.g. `idle - 106` becomes `Bereit - Ladestation nicht erreichbar` in German
+- replace trailing raw codes such as `106` with text such as `Ladestation nicht erreichbar` while preserving Landroid Card's red real-error styling
+- keep error code `0` hidden and retain numeric-code fallback with older Kress Fleet integration versions
+
 ## 0.3.4
 
 - rename the German Coverage label to `Mähfortschritt`
