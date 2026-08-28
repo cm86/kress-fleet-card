@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.7 - 2026-08-28
+
+### Added
+
+- Add an optional zoomable Live Map detail viewer when the map image is clicked.
+- Zoom with the mouse wheel around the pointer position, drag the zoomed map to pan, and double-click to reset.
+- Add `+`, `-`, percentage/reset and close controls plus `Esc`, `+`, `-` and `0` keyboard shortcuts.
+- Add a visual-editor toggle (`map_detail_zoom`, enabled by default) to switch between the zoom viewer and Home Assistant's normal camera more-info dialog.
+
+### Compatibility
+
+- No Kress Fleet integration update is required.
+- Existing mower controls, targeted-zone mowing, coverage selector and Live Map rendering remain unchanged.
+
 ## 0.3.6 - 2026-08-23
 
 ### Added

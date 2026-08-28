@@ -5,6 +5,7 @@ A Home Assistant dashboard card for the **Kress Fleet** integration.
 Kress Fleet Card wraps the existing [Landroid Card](https://github.com/Barma-lej/landroid-card) and adds Kress Fleet specific functionality:
 
 - switch between mower view and the Kress Fleet Live Map
+- open a zoomable Live Map detail view with mouse-wheel zoom and drag-to-pan
 - select the Live Map coverage period
 - select a named Fleet RTK mowing zone and start mowing that exact zone
 - automatic English/German labels
@@ -93,7 +94,7 @@ The integration resolves the displayed zone name back to the exact Fleet zone ID
 
 ## Live Map example
 
-The Live Map view combines the Kress Fleet map with the mower controls and the selectable coverage period.
+The Live Map view combines the Kress Fleet map with the mower controls and the selectable coverage period. Clicking the map opens the zoomable detail viewer by default. Use the mouse wheel to zoom around the pointer, drag to pan, double-click or press `0` to reset, and press `Esc` to close.
 
 ![Kress Fleet Card Live Map](images/live-map-example.png)
 
@@ -126,6 +127,10 @@ grid_columns: full
 
 # Optional maximum Live Map image height.
 map_max_height: 700
+
+# Zoomable detail view on map click (default: true).
+# Set false to use Home Assistant camera more-info instead.
+map_detail_zoom: true
 ```
 
 Most normal Landroid Card options can still be passed through the Kress Fleet Card YAML configuration.
@@ -156,13 +161,13 @@ Letzte 7 Tage
 
 ## Updating and release notes
 
-Tagged releases use semantic versions such as `v0.3.6`. The repository's release workflow automatically publishes the matching `CHANGELOG.md` section as GitHub release notes, so HACS can show a real version and **Release notes / Versionshinweise** instead of only a commit hash.
+Tagged releases use semantic versions such as `v0.3.7`. The repository's release workflow automatically publishes the matching `CHANGELOG.md` section as GitHub release notes, so HACS can show a real version and **Release notes / Versionshinweise** instead of only a commit hash.
 
 For maintainers, push the normal commit first and tag it only after the repository checks are green:
 
 ```bash
-git tag v0.3.6
-git push origin v0.3.6
+git tag v0.3.7
+git push origin v0.3.7
 ```
 
 ## Troubleshooting

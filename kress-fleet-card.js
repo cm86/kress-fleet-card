@@ -16,7 +16,7 @@
  * Barma-lej, Kress, or their respective owners.
  */
 
-const KRESS_FLEET_CARD_VERSION = '0.3.6';
+const KRESS_FLEET_CARD_VERSION = '0.3.7';
 const VIEW_KEY_PREFIX = 'kress-fleet-card-view:';
 const LANDROID_TAG = 'landroid-card';
 const KRESS_TAG = 'kress-fleet-card';
@@ -53,6 +53,10 @@ const TEXT = {
     width_full: 'Full section-area width',
     remember_view: 'Remember last view in this browser',
     max_map_height: 'Maximum map height (px)',
+    map_detail_zoom: 'Zoomable map detail (mouse wheel)',
+    map_zoom_hint: 'Mouse wheel: zoom · Drag: pan · Double-click: reset',
+    map_zoom_reset: 'Reset zoom',
+    map_zoom_close: 'Close',
     more_options:
       'Additional Landroid Card options (image, battery card, settings, stats, etc.) remain available in the YAML/code editor.',
     card_description:
@@ -87,6 +91,10 @@ const TEXT = {
     width_full: 'Volle Breite des Section-Bereichs',
     remember_view: 'Letzte Ansicht in diesem Browser merken',
     max_map_height: 'Maximale Kartenhöhe (px)',
+    map_detail_zoom: 'Zoombare Karten-Detailansicht (Mausrad)',
+    map_zoom_hint: 'Mausrad: Zoomen · Ziehen: Verschieben · Doppelklick: Zurücksetzen',
+    map_zoom_reset: 'Zoom zurücksetzen',
+    map_zoom_close: 'Schließen',
     more_options:
       'Weitere Optionen der Landroid Card (Bild, Battery Card, Einstellungen, Statistiken usw.) bleiben im YAML-/Code-Editor verfügbar.',
     card_description:
@@ -865,6 +873,301 @@ const openMoreInfo = (card, entityId) => {
   );
 };
 
+const openZoomableMapDetail = (card, cameraId) => {
+  if (card.config?.map_detail_zoom === false) {
+    openMoreInfo(card, cameraId);
+    return;
+  }
+
+  const url = cameraPictureUrl(card, cameraId);
+  if (!url) {
+    openMoreInfo(card, cameraId);
+    return;
+  }
+
+  document.querySelector('.kress-fleet-map-detail')?.remove();
+
+  const overlay = setStyles(document.createElement('div'), {
+    position: 'fixed',
+    inset: '0',
+    zIndex: '999999',
+    overflow: 'hidden',
+    background: 'rgba(0, 0, 0, 0.92)',
+    touchAction: 'none',
+    userSelect: 'none',
+  });
+  overlay.className = 'kress-fleet-map-detail';
+  overlay.tabIndex = -1;
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', `Kress Fleet ${tr(card.hass, 'live_map', 'Live Map')}`);
+
+  const img = document.createElement('img');
+  img.alt = `Kress Fleet ${tr(card.hass, 'live_map', 'Live Map')}`;
+  img.src = url;
+  img.draggable = false;
+  setStyles(img, {
+    position: 'absolute',
+    left: '0',
+    top: '0',
+    width: 'auto',
+    height: 'auto',
+    maxWidth: 'none',
+    maxHeight: 'none',
+    transformOrigin: '0 0',
+    willChange: 'transform',
+    pointerEvents: 'none',
+  });
+
+  const hint = setStyles(document.createElement('div'), {
+    position: 'absolute',
+    left: '16px',
+    bottom: '16px',
+    zIndex: '2',
+    padding: '8px 12px',
+    borderRadius: '10px',
+    background: 'rgba(0, 0, 0, 0.62)',
+    color: '#fff',
+    fontSize: '13px',
+    lineHeight: '1.3',
+    pointerEvents: 'none',
+  });
+  hint.textContent = tr(
+    card.hass,
+    'map_zoom_hint',
+    'Mouse wheel: zoom · Drag: pan · Double-click: reset',
+  );
+
+  const toolbar = setStyles(document.createElement('div'), {
+    position: 'absolute',
+    top: '16px',
+    right: '16px',
+    zIndex: '3',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px',
+    borderRadius: '12px',
+    background: 'rgba(0, 0, 0, 0.68)',
+    boxShadow: '0 4px 18px rgba(0, 0, 0, 0.28)',
+  });
+
+  const makeToolbarButton = (label, title) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    setStyles(button, {
+      minWidth: '38px',
+      height: '38px',
+      padding: '0 10px',
+      border: '0',
+      borderRadius: '9px',
+      background: 'rgba(255, 255, 255, 0.14)',
+      color: '#fff',
+      font: 'inherit',
+      fontWeight: '600',
+      cursor: 'pointer',
+    });
+    return button;
+  };
+
+  const zoomOut = makeToolbarButton('−', 'Zoom out');
+  const reset = makeToolbarButton('100%', tr(card.hass, 'map_zoom_reset', 'Reset zoom'));
+  const zoomIn = makeToolbarButton('+', 'Zoom in');
+  const close = makeToolbarButton('×', tr(card.hass, 'map_zoom_close', 'Close'));
+  close.style.fontSize = '23px';
+  toolbar.append(zoomOut, reset, zoomIn, close);
+
+  overlay.append(img, hint, toolbar);
+  document.body.appendChild(overlay);
+
+  let baseWidth = 0;
+  let baseHeight = 0;
+  let scale = 1;
+  let x = 0;
+  let y = 0;
+  let dragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragOriginX = 0;
+  let dragOriginY = 0;
+  const minScale = 1;
+  const maxScale = 8;
+
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  const constrainPan = () => {
+    const viewportWidth = overlay.clientWidth;
+    const viewportHeight = overlay.clientHeight;
+    const scaledWidth = baseWidth * scale;
+    const scaledHeight = baseHeight * scale;
+
+    if (scaledWidth <= viewportWidth) {
+      x = (viewportWidth - scaledWidth) / 2;
+    } else {
+      x = clamp(x, viewportWidth - scaledWidth, 0);
+    }
+
+    if (scaledHeight <= viewportHeight) {
+      y = (viewportHeight - scaledHeight) / 2;
+    } else {
+      y = clamp(y, viewportHeight - scaledHeight, 0);
+    }
+  };
+
+  const render = () => {
+    if (!baseWidth || !baseHeight) return;
+    constrainPan();
+    img.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+    reset.textContent = `${Math.round(scale * 100)}%`;
+    overlay.style.cursor = dragging ? 'grabbing' : scale > 1 ? 'grab' : 'zoom-in';
+    zoomOut.disabled = scale <= minScale + 0.001;
+    zoomIn.disabled = scale >= maxScale - 0.001;
+    zoomOut.style.opacity = zoomOut.disabled ? '0.45' : '1';
+    zoomIn.style.opacity = zoomIn.disabled ? '0.45' : '1';
+  };
+
+  const fit = () => {
+    if (!img.naturalWidth || !img.naturalHeight) return;
+    const availableWidth = Math.max(1, overlay.clientWidth * 0.96);
+    const availableHeight = Math.max(1, overlay.clientHeight * 0.92);
+    const fitScale = Math.min(
+      availableWidth / img.naturalWidth,
+      availableHeight / img.naturalHeight,
+      1,
+    );
+    baseWidth = Math.max(1, img.naturalWidth * fitScale);
+    baseHeight = Math.max(1, img.naturalHeight * fitScale);
+    img.style.width = `${baseWidth}px`;
+    img.style.height = `${baseHeight}px`;
+    scale = 1;
+    x = (overlay.clientWidth - baseWidth) / 2;
+    y = (overlay.clientHeight - baseHeight) / 2;
+    render();
+  };
+
+  const zoomAt = (nextScale, clientX, clientY) => {
+    if (!baseWidth || !baseHeight) return;
+    const bounded = clamp(nextScale, minScale, maxScale);
+    if (Math.abs(bounded - scale) < 0.0001) return;
+
+    const imageX = (clientX - x) / scale;
+    const imageY = (clientY - y) / scale;
+    x = clientX - imageX * bounded;
+    y = clientY - imageY * bounded;
+    scale = bounded;
+    render();
+  };
+
+  const zoomAtCenter = (factor) => {
+    zoomAt(
+      scale * factor,
+      overlay.clientWidth / 2,
+      overlay.clientHeight / 2,
+    );
+  };
+
+  const resetZoom = () => {
+    scale = 1;
+    x = (overlay.clientWidth - baseWidth) / 2;
+    y = (overlay.clientHeight - baseHeight) / 2;
+    render();
+  };
+
+  const closeDetail = () => {
+    window.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('resize', fit);
+    overlay.remove();
+  };
+
+  const onKeyDown = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeDetail();
+    } else if (event.key === '+' || event.key === '=') {
+      event.preventDefault();
+      zoomAtCenter(1.25);
+    } else if (event.key === '-') {
+      event.preventDefault();
+      zoomAtCenter(0.8);
+    } else if (event.key === '0') {
+      event.preventDefault();
+      resetZoom();
+    }
+  };
+
+  overlay.addEventListener(
+    'wheel',
+    (event) => {
+      event.preventDefault();
+      const factor = Math.exp(-event.deltaY * 0.0015);
+      zoomAt(scale * factor, event.clientX, event.clientY);
+    },
+    { passive: false },
+  );
+
+  overlay.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || scale <= 1) return;
+    if (toolbar.contains(event.target)) return;
+    dragging = true;
+    dragStartX = event.clientX;
+    dragStartY = event.clientY;
+    dragOriginX = x;
+    dragOriginY = y;
+    overlay.setPointerCapture?.(event.pointerId);
+    render();
+  });
+
+  overlay.addEventListener('pointermove', (event) => {
+    if (!dragging) return;
+    x = dragOriginX + event.clientX - dragStartX;
+    y = dragOriginY + event.clientY - dragStartY;
+    render();
+  });
+
+  const stopDrag = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    overlay.releasePointerCapture?.(event.pointerId);
+    render();
+  };
+  overlay.addEventListener('pointerup', stopDrag);
+  overlay.addEventListener('pointercancel', stopDrag);
+
+  overlay.addEventListener('dblclick', (event) => {
+    if (toolbar.contains(event.target)) return;
+    event.preventDefault();
+    resetZoom();
+  });
+
+  zoomOut.addEventListener('click', (event) => {
+    event.stopPropagation();
+    zoomAtCenter(0.8);
+  });
+  zoomIn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    zoomAtCenter(1.25);
+  });
+  reset.addEventListener('click', (event) => {
+    event.stopPropagation();
+    resetZoom();
+  });
+  close.addEventListener('click', (event) => {
+    event.stopPropagation();
+    closeDetail();
+  });
+
+  img.addEventListener('load', fit, { once: true });
+  img.addEventListener('error', closeDetail, { once: true });
+  window.addEventListener('keydown', onKeyDown, true);
+  window.addEventListener('resize', fit);
+  overlay.focus();
+
+  if (img.complete && img.naturalWidth) fit();
+};
+
 const makeMap = (card, cameraId) => {
   const url = cameraPictureUrl(card, cameraId);
   const container = setStyles(document.createElement('div'), {
@@ -904,7 +1207,7 @@ const makeMap = (card, cameraId) => {
   }
 
   setStyles(img, mapStyles);
-  img.addEventListener('click', () => openMoreInfo(card, cameraId));
+  img.addEventListener('click', () => openZoomableMapDetail(card, cameraId));
   container.appendChild(img);
   return container;
 };
@@ -1138,6 +1441,7 @@ class KressFleetCard extends HTMLElement {
       entity: entity || '',
       default_view: 'mower',
       remember_view: true,
+      map_detail_zoom: true,
       grid_columns: 'full',
     };
   }
@@ -1427,6 +1731,17 @@ class KressFleetCardEditor extends HTMLElement {
       document.createTextNode(tr(this._hass, 'remember_view', 'Remember last view in this browser')),
     );
     root.appendChild(rememberRow);
+
+    const zoomRow = document.createElement('label');
+    zoomRow.style.cssText =
+      'display:flex;align-items:center;gap:10px;min-height:40px;';
+    zoomRow.append(
+      this._makeCheckbox('map_detail_zoom', true),
+      document.createTextNode(
+        tr(this._hass, 'map_detail_zoom', 'Zoomable map detail (mouse wheel)'),
+      ),
+    );
+    root.appendChild(zoomRow);
 
     const maxHeight = document.createElement('input');
     maxHeight.type = 'number';
