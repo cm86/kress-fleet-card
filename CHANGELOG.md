@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.8 - 2026-08-31
+
+### Added
+
+- Automatically use the matching transparent Kress product image for a mower model from `static-models.kress-robotik.com` when Home Assistant exposes a model such as `KR236E` or `KR271E`.
+- Probe the remote model image before handing it to Landroid Card, so missing model assets fall back cleanly to the normal Landroid image instead of showing a broken image.
+- Add an `auto_model_image` visual-editor toggle, enabled by default.
+
+### Compatibility
+
+- Existing manually configured `image:` values keep priority and are never overwritten.
+- Existing `image_size`, `image_left` and mower-image animation settings continue to be handled by Landroid Card.
+- No Kress Fleet integration update is required; the card reads the mower model from Home Assistant device metadata.
+
 ## 0.3.7 - 2026-08-28
 
 ### Added

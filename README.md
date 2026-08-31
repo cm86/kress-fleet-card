@@ -8,6 +8,7 @@ Kress Fleet Card wraps the existing [Landroid Card](https://github.com/Barma-lej
 - open a zoomable Live Map detail view with mouse-wheel zoom and drag-to-pan
 - select the Live Map coverage period
 - select a named Fleet RTK mowing zone and start mowing that exact zone
+- automatically show the matching transparent Kress mower image from the mower model
 - automatic English/German labels
 - automatic discovery of the Live Map camera and coverage-period selector
 - human-readable active zone names from the Kress Fleet zone-name sensor
@@ -83,6 +84,19 @@ It also automatically detects the mower's Kress Fleet `zone_name` sensor and use
 
 The card can also be added and configured through the Home Assistant visual card editor.
 
+## Automatic Kress model image
+
+By default, Kress Fleet Card reads the mower model from the Home Assistant device registry. For a model such as `KR236E` it probes the matching Kress static asset:
+
+```text
+https://static-models.kress-robotik.com/KR236E_256.png
+```
+
+When the asset exists, it is passed to Landroid Card as the normal mower `image`, so it appears in exactly the same mower-image position and keeps Landroid Card's existing size, placement and animation behavior. Missing remote assets fall back to Landroid Card's normal image.
+
+A manually configured `image:` always has priority. This keeps existing local `/local/...` mower images unchanged. Remove the manual `image:` line when you want the automatic Kress model image to take over.
+
+Set `auto_model_image: false` to disable remote model-image loading entirely. The browser then makes no request to `static-models.kress-robotik.com`.
 
 ## Targeted zone mowing
 
@@ -128,6 +142,10 @@ grid_columns: full
 # Optional maximum Live Map image height.
 map_max_height: 700
 
+# Automatically load the matching Kress product image (default: true).
+# A manual image: value always wins.
+auto_model_image: true
+
 # Zoomable detail view on map click (default: true).
 # Set false to use Home Assistant camera more-info instead.
 map_detail_zoom: true
@@ -161,13 +179,13 @@ Letzte 7 Tage
 
 ## Updating and release notes
 
-Tagged releases use semantic versions such as `v0.3.7`. The repository's release workflow automatically publishes the matching `CHANGELOG.md` section as GitHub release notes, so HACS can show a real version and **Release notes / Versionshinweise** instead of only a commit hash.
+Tagged releases use semantic versions such as `v0.3.8`. The repository's release workflow automatically publishes the matching `CHANGELOG.md` section as GitHub release notes, so HACS can show a real version and **Release notes / Versionshinweise** instead of only a commit hash.
 
 For maintainers, push the normal commit first and tag it only after the repository checks are green:
 
 ```bash
-git tag v0.3.7
-git push origin v0.3.7
+git tag v0.3.8
+git push origin v0.3.8
 ```
 
 ## Troubleshooting

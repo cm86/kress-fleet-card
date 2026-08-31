@@ -4,6 +4,7 @@
  * A wrapper around Barma-lej/landroid-card that adds:
  * - mower / live-map view switch
  * - Kress Fleet coverage-period selector
+ * - automatic Kress model images with manual-image override
  * - configurable Sections-view grid width
  * - a lightweight visual editor for Kress-specific options
  *
@@ -16,7 +17,7 @@
  * Barma-lej, Kress, or their respective owners.
  */
 
-const KRESS_FLEET_CARD_VERSION = '0.3.7';
+const KRESS_FLEET_CARD_VERSION = '0.3.8';
 const VIEW_KEY_PREFIX = 'kress-fleet-card-view:';
 const LANDROID_TAG = 'landroid-card';
 const KRESS_TAG = 'kress-fleet-card';
@@ -53,6 +54,7 @@ const TEXT = {
     width_full: 'Full section-area width',
     remember_view: 'Remember last view in this browser',
     max_map_height: 'Maximum map height (px)',
+    auto_model_image: 'Automatic Kress model image',
     map_detail_zoom: 'Zoomable map detail (mouse wheel)',
     map_zoom_hint: 'Mouse wheel: zoom · Drag: pan · Double-click: reset',
     map_zoom_reset: 'Reset zoom',
@@ -91,6 +93,7 @@ const TEXT = {
     width_full: 'Volle Breite des Section-Bereichs',
     remember_view: 'Letzte Ansicht in diesem Browser merken',
     max_map_height: 'Maximale Kartenhöhe (px)',
+    auto_model_image: 'Kress-Modellbild automatisch laden',
     map_detail_zoom: 'Zoombare Karten-Detailansicht (Mausrad)',
     map_zoom_hint: 'Mausrad: Zoomen · Ziehen: Verschieben · Doppelklick: Zurücksetzen',
     map_zoom_reset: 'Zoom zurücksetzen',
@@ -148,6 +151,47 @@ const coverageOptionLabel = (card, option) => {
 
 const registryDeviceId = (card) =>
   card?.hass?.entities?.[card?.config?.entity]?.device_id || null;
+
+const normalizeKressModel = (value) => {
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim().toUpperCase();
+  const match = text.match(/(?:^|[^A-Z0-9])(KR[A-Z0-9]{3,12})(?:$|[^A-Z0-9])/);
+  return match?.[1] || null;
+};
+
+const resolveMowerModel = (hass, entityId) => {
+  if (!hass || !entityId) return null;
+
+  const state = hass.states?.[entityId];
+  const registry = hass.entities?.[entityId];
+  const device = registry?.device_id ? hass.devices?.[registry.device_id] : null;
+  const candidates = [
+    device?.model,
+    state?.attributes?.model,
+    state?.attributes?.model_code,
+    state?.attributes?.modelCode,
+    state?.attributes?.product_model,
+    state?.attributes?.productModel,
+  ];
+
+  for (const candidate of candidates) {
+    const model = normalizeKressModel(candidate);
+    if (model) return model;
+  }
+  return null;
+};
+
+const kressModelImageUrl = (model) =>
+  model
+    ? `https://static-models.kress-robotik.com/${encodeURIComponent(model)}_256.png`
+    : null;
+
+const hasManualMowerImage = (config) => {
+  const image = config?.image;
+  if (typeof image !== 'string') return Boolean(image);
+  const value = image.trim();
+  return Boolean(value) && value.toLowerCase() !== 'default';
+};
 
 const entityIdsForDevice = (card, domain) => {
   const deviceId = registryDeviceId(card);
@@ -1374,6 +1418,9 @@ class KressFleetCard extends HTMLElement {
     this._inner = null;
     this._initPromise = null;
     this._enhanceTimer = null;
+    this._autoModelImageCandidate = null;
+    this._autoModelImageUrl = null;
+    this._autoModelImageProbe = null;
   }
 
   setConfig(config) {
@@ -1391,6 +1438,7 @@ class KressFleetCard extends HTMLElement {
     this._hass = value;
     if (this._inner) {
       this._inner.hass = value;
+      this._syncAutomaticModelImage();
       this._scheduleEnhance();
     } else {
       this._ensureInner();
@@ -1441,6 +1489,7 @@ class KressFleetCard extends HTMLElement {
       entity: entity || '',
       default_view: 'mower',
       remember_view: true,
+      auto_model_image: true,
       map_detail_zoom: true,
       grid_columns: 'full',
     };
@@ -1476,6 +1525,7 @@ class KressFleetCard extends HTMLElement {
       const inner = document.createElement(LANDROID_TAG);
       this._inner = inner;
       this.replaceChildren(inner);
+      this._syncAutomaticModelImage();
       this._applyInnerConfig();
       if (this._hass) inner.hass = this._hass;
       this._scheduleEnhance(true);
@@ -1494,8 +1544,66 @@ class KressFleetCard extends HTMLElement {
     await this._initPromise;
   }
 
+  _automaticModelImageCandidate() {
+    if (
+      !this._config ||
+      this._config.auto_model_image === false ||
+      hasManualMowerImage(this._config)
+    ) {
+      return null;
+    }
+
+    const model = resolveMowerModel(this._hass, this._config.entity);
+    return kressModelImageUrl(model);
+  }
+
+  _syncAutomaticModelImage() {
+    const candidate = this._automaticModelImageCandidate();
+    if (candidate === this._autoModelImageCandidate) return;
+
+    if (this._autoModelImageProbe) {
+      this._autoModelImageProbe.onload = null;
+      this._autoModelImageProbe.onerror = null;
+      this._autoModelImageProbe = null;
+    }
+
+    this._autoModelImageCandidate = candidate;
+    this._autoModelImageUrl = null;
+
+    if (!candidate || typeof Image === 'undefined') return;
+
+    const probe = new Image();
+    this._autoModelImageProbe = probe;
+
+    probe.onload = () => {
+      if (
+        this._autoModelImageProbe !== probe ||
+        this._automaticModelImageCandidate() !== candidate
+      ) {
+        return;
+      }
+      this._autoModelImageProbe = null;
+      this._autoModelImageUrl = candidate;
+      if (this._inner) this._applyInnerConfig();
+    };
+
+    probe.onerror = () => {
+      if (this._autoModelImageProbe !== probe) return;
+      this._autoModelImageProbe = null;
+      this._autoModelImageUrl = null;
+      console.info(
+        `[kress-fleet-card] No remote model image available for ${candidate}; using Landroid Card fallback.`,
+      );
+    };
+
+    probe.src = candidate;
+  }
+
   _applyInnerConfig() {
     if (!this._inner || !this._config) return;
+
+    this._syncAutomaticModelImage();
+
     const innerConfig = { ...this._config, type: 'custom:landroid-card' };
     delete innerConfig.grid_columns;
     delete innerConfig.layout_width;
@@ -1504,6 +1612,12 @@ class KressFleetCard extends HTMLElement {
     delete innerConfig.mow_zone_button;
     delete innerConfig.mow_selected_zone_button;
     delete innerConfig.target_zone_label;
+    delete innerConfig.auto_model_image;
+
+    if (!hasManualMowerImage(this._config) && this._autoModelImageUrl) {
+      innerConfig.image = this._autoModelImageUrl;
+    }
+
     this._inner.setConfig(innerConfig);
     this._inner.config = innerConfig;
   }
@@ -1731,6 +1845,17 @@ class KressFleetCardEditor extends HTMLElement {
       document.createTextNode(tr(this._hass, 'remember_view', 'Remember last view in this browser')),
     );
     root.appendChild(rememberRow);
+
+    const modelImageRow = document.createElement('label');
+    modelImageRow.style.cssText =
+      'display:flex;align-items:center;gap:10px;min-height:40px;';
+    modelImageRow.append(
+      this._makeCheckbox('auto_model_image', true),
+      document.createTextNode(
+        tr(this._hass, 'auto_model_image', 'Automatic Kress model image'),
+      ),
+    );
+    root.appendChild(modelImageRow);
 
     const zoomRow = document.createElement('label');
     zoomRow.style.cssText =
